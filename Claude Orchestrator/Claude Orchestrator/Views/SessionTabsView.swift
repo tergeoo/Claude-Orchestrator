@@ -1,12 +1,14 @@
 import SwiftUI
 
-// MARK: - ViewMode
+// MARK: - AppTab
 
-enum ViewMode: String, CaseIterable {
-    case terminal, files
+enum AppTab: String, CaseIterable {
+    case terminal = "Terminal"
+    case activity = "Activity"
+    case files    = "Files"
 }
 
-// MARK: - SessionTabsView (root view when sessions exist)
+// MARK: - SessionTabsView
 
 struct SessionTabsView: View {
     @EnvironmentObject var sessionManager: SessionManager
@@ -14,7 +16,9 @@ struct SessionTabsView: View {
     @EnvironmentObject var authService: AuthService
 
     @State private var selectedSessionID: String?
-    @State private var viewMode: ViewMode = .terminal
+    @State private var activeTab: AppTab = .terminal
+    @State private var showMachineSelector = false
+    @State private var showSettings = false
     @State private var showAddAgent = false
 
     var activeSession: TerminalSession? {
@@ -29,6 +33,121 @@ struct SessionTabsView: View {
             } else {
                 mainView
             }
+        }
+    }
+
+    // MARK: - Main layout
+
+    private var mainView: some View {
+        VStack(spacing: 0) {
+            topBar
+            Divider()
+            reconnectingBanner
+            TabView(selection: $activeTab) {
+                terminalTab
+                    .tag(AppTab.terminal)
+                    .tabItem { Label("Terminal", systemImage: "terminal.fill") }
+
+                activityTab
+                    .tag(AppTab.activity)
+                    .tabItem { Label("Activity", systemImage: "list.bullet.clipboard.fill") }
+
+                filesTab
+                    .tag(AppTab.files)
+                    .tabItem { Label("Files", systemImage: "folder.fill") }
+            }
+        }
+        .sheet(isPresented: $showMachineSelector) {
+            machineSelectorSheet
+                .environmentObject(relay)
+                .environmentObject(sessionManager)
+                .environmentObject(authService)
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+                .environmentObject(authService)
+                .environmentObject(relay)
+                .environmentObject(sessionManager)
+        }
+        .sheet(isPresented: $showAddAgent) {
+            AgentListView()
+                .environmentObject(relay)
+                .environmentObject(sessionManager)
+                .environmentObject(authService)
+        }
+        .onChange(of: sessionManager.sessions) { _, sessions in
+            if let last = sessions.last,
+               selectedSessionID == nil || !sessions.contains(where: { $0.id == selectedSessionID }) {
+                selectedSessionID = last.id
+            }
+        }
+    }
+
+    // MARK: - Top bar (44pt)
+
+    private var topBar: some View {
+        HStack(spacing: 12) {
+            // Machine selector button
+            Button {
+                showMachineSelector = true
+            } label: {
+                HStack(spacing: 5) {
+                    Text(machineName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            // Connection status
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(connectionColor)
+                    .frame(width: 8, height: 8)
+                Text(connectionLabel)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            // Settings
+            Button {
+                showSettings = true
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(height: 44)
+        .padding(.horizontal, 16)
+        .background(.bar)
+    }
+
+    private var machineName: String {
+        guard let session = activeSession else { return "No Machine" }
+        return session.agent.name.components(separatedBy: ".").first ?? session.agent.name
+    }
+
+    private var connectionColor: Color {
+        switch relay.connectionState {
+        case .connected:    return .green
+        case .connecting:   return .yellow
+        case .disconnected: return .red
+        }
+    }
+
+    private var connectionLabel: String {
+        switch relay.connectionState {
+        case .connected:    return "Connected"
+        case .connecting:   return "Connecting…"
+        case .disconnected: return "Disconnected"
         }
     }
 
@@ -64,110 +183,131 @@ struct SessionTabsView: View {
         }
     }
 
-    // MARK: - Main layout
+    // MARK: - Tab content
 
-    private var mainView: some View {
-        VStack(spacing: 0) {
-            topBar
-            Divider()
-            reconnectingBanner
-            contentArea
-            if viewMode == .terminal, let session = activeSession {
+    @ViewBuilder
+    private var terminalTab: some View {
+        if let session = activeSession {
+            VStack(spacing: 0) {
+                RemoteTerminalView(session: session)
+                    .id(session.id)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Divider()
                 QuickCommandBar { bytes in
                     relay.sendInput(sessionID: session.id, data: Data(bytes))
                 }
             }
-        }
-        .sheet(isPresented: $showAddAgent) {
-            AgentListView()
-                .environmentObject(relay)
-                .environmentObject(sessionManager)
-                .environmentObject(authService)
-        }
-        .onChange(of: sessionManager.sessions) { _, sessions in
-            if let last = sessions.last,
-               selectedSessionID == nil || !sessions.contains(where: { $0.id == selectedSessionID }) {
-                selectedSessionID = last.id
-            }
+        } else {
+            noSessionPlaceholder
         }
     }
-
-    // MARK: - Top bar
-
-    private var topBar: some View {
-        HStack(spacing: 0) {
-            // Machine pills (scrollable)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(sessionManager.sessions) { session in
-                        MachinePill(
-                            name: session.agent.name,
-                            isSelected: activeSession?.id == session.id
-                        ) {
-                            selectedSessionID = session.id
-                        } onClose: {
-                            closeSession(session)
-                        }
-                    }
-                    // Add machine button
-                    Button { showAddAgent = true } label: {
-                        Image(systemName: "plus.circle")
-                            .font(.system(size: 18))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 4)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-            }
-
-            // Separator
-            Rectangle()
-                .fill(Color(UIColor.separator))
-                .frame(width: 0.5, height: 30)
-
-            // Terminal / Files toggle
-            Picker("", selection: $viewMode) {
-                Image(systemName: "terminal.fill").tag(ViewMode.terminal)
-                Image(systemName: "folder.fill").tag(ViewMode.files)
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 88)
-            .padding(.horizontal, 10)
-        }
-        .frame(height: 46)
-        .background(.bar)
-    }
-
-    // MARK: - Content
 
     @ViewBuilder
-    private var contentArea: some View {
+    private var activityTab: some View {
         if let session = activeSession {
-            Group {
-                if viewMode == .terminal {
-                    RemoteTerminalView(session: session)
-                        .id(session.id)
-                        .ignoresSafeArea(edges: .bottom)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    FileBrowserView(
-                        agentID: session.agent.id,
-                        agentName: session.agent.name,
-                        embedded: true
-                    ) { path, dangerous in
-                        let cmd = dangerous
-                            ? "cd \"\(path)\" && claude --dangerously-skip-permissions"
-                            : "cd \"\(path)\" && claude"
-                        sessionManager.createSession(for: session.agent, initialCommand: cmd)
-                        viewMode = .terminal
+            ActivityFeedView(session: session)
+        } else {
+            noSessionPlaceholder
+        }
+    }
+
+    @ViewBuilder
+    private var filesTab: some View {
+        if let session = activeSession {
+            FileBrowserView(
+                agentID: session.agent.id,
+                agentName: session.agent.name,
+                embedded: true
+            ) { path, dangerous in
+                let cmd = dangerous
+                    ? "cd \"\(path)\" && claude --dangerously-skip-permissions"
+                    : "cd \"\(path)\" && claude"
+                sessionManager.createSession(for: session.agent, initialCommand: cmd)
+                activeTab = .terminal
+            }
+            .environmentObject(relay)
+        } else {
+            noSessionPlaceholder
+        }
+    }
+
+    private var noSessionPlaceholder: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "desktopcomputer.slash")
+                .font(.system(size: 40))
+                .foregroundStyle(.tertiary)
+            Text("No active session")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Machine selector sheet
+
+    private var machineSelectorSheet: some View {
+        NavigationView {
+            List {
+                Section("Active Sessions") {
+                    ForEach(sessionManager.sessions) { session in
+                        Button {
+                            selectedSessionID = session.id
+                            showMachineSelector = false
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(session.agent.name)
+                                        .font(.body)
+                                        .foregroundStyle(.primary)
+                                    Text(String(session.id.prefix(8)) + "…")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fontDesign(.monospaced)
+                                }
+                                Spacer()
+                                if session.id == activeSession?.id {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Color.accentColor)
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button("Close", role: .destructive) {
+                                closeSession(session)
+                            }
+                        }
                     }
-                    .environmentObject(relay)
+                }
+
+                Section {
+                    Button {
+                        showMachineSelector = false
+                        // Small delay so the sheet dismisses before the next one opens
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            showAddAgent = true
+                        }
+                    } label: {
+                        Label("Add Machine", systemImage: "plus.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                    }
+
+                    if !sessionManager.sessions.isEmpty {
+                        Button("Close All", role: .destructive) {
+                            showMachineSelector = false
+                            sessionManager.closeAll()
+                        }
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .listStyle(.insetGrouped)
+            .navigationTitle("Sessions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { showMachineSelector = false }
+                }
+            }
         }
     }
 
@@ -175,59 +315,9 @@ struct SessionTabsView: View {
 
     private func closeSession(_ session: TerminalSession) {
         relay.sendDisconnect(sessionID: session.id)
-        relay.unregisterSessionHandler(sessionID: session.id)
         sessionManager.remove(session: session)
         if selectedSessionID == session.id {
             selectedSessionID = sessionManager.sessions.first?.id
         }
-    }
-}
-
-// MARK: - MachinePill
-
-struct MachinePill: View {
-    let name: String
-    let isSelected: Bool
-    let onSelect: () -> Void
-    let onClose: () -> Void
-
-    /// Shortened display name: take part before first "." or first 14 chars
-    private var shortName: String {
-        let s = name.components(separatedBy: ".").first ?? name
-        return s.count > 14 ? String(s.prefix(14)) : s
-    }
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(isSelected ? Color.accentColor : Color.secondary.opacity(0.35))
-                .frame(width: 6, height: 6)
-
-            Text(shortName)
-                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                .lineLimit(1)
-                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-
-            Button { onClose() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Color.secondary.opacity(0.7))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            isSelected
-                ? Color(UIColor.secondarySystemBackground)
-                : Color(UIColor.tertiarySystemBackground),
-            in: Capsule()
-        )
-        .overlay(
-            Capsule()
-                .stroke(isSelected ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 1)
-        )
-        .contentShape(Capsule())
-        .onTapGesture { onSelect() }
     }
 }

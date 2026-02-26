@@ -184,4 +184,12 @@ final class SessionManager: ObservableObject {
         relay.unregisterSessionHandler(sessionID: session.id)
         sessions.removeAll { $0.id == session.id }
     }
+
+    func closeAll() {
+        for session in sessions {
+            relay.sendDisconnect(sessionID: session.id)
+            relay.unregisterSessionHandler(sessionID: session.id)
+        }
+        sessions.removeAll()
+    }
 }
