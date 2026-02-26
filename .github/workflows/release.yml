@@ -7,10 +7,9 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 jobs:
-  # ── Build agent binaries for all platforms ──────────────────────────────────
+  # ── Build agent binaries ────────────────────────────────────────────────────
   build-agent:
     name: Build agent (${{ matrix.goos }}-${{ matrix.goarch }})
     runs-on: ubuntu-latest
@@ -31,7 +30,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.22"
           cache-dependency-path: agent/go.sum
 
       - name: Build
@@ -44,13 +43,12 @@ jobs:
           go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
             -o "claude-agent-${{ matrix.goos }}-${{ matrix.goarch }}" .
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: claude-agent-${{ matrix.goos }}-${{ matrix.goarch }}
           path: agent/claude-agent-${{ matrix.goos }}-${{ matrix.goarch }}
 
-  # ── Build relay binary ──────────────────────────────────────────────────────
+  # ── Build relay binaries ────────────────────────────────────────────────────
   build-relay:
     name: Build relay (${{ matrix.goos }}-${{ matrix.goarch }})
     runs-on: ubuntu-latest
@@ -67,7 +65,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.22"
           cache-dependency-path: relay/go.sum
 
       - name: Build
@@ -80,13 +78,12 @@ jobs:
           go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
             -o "claude-relay-${{ matrix.goos }}-${{ matrix.goarch }}" .
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: claude-relay-${{ matrix.goos }}-${{ matrix.goarch }}
           path: relay/claude-relay-${{ matrix.goos }}-${{ matrix.goarch }}
 
-  # ── Create GitHub Release with all binaries ─────────────────────────────────
+  # ── Create release + update Homebrew formula ────────────────────────────────
   release:
     name: Create Release
     needs: [build-agent, build-relay]
@@ -94,6 +91,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -101,73 +100,56 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: List artifacts
-        run: ls -lh dist/
-
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
+          generate_release_notes: false
           body: |
-            ## Installation
+            ## Claude Agent ${{ github.ref_name }}
 
-            ### Mac / Linux (one-liner)
-            ```sh
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh
+            ### Install via Homebrew (macOS)
+            ```bash
+            brew tap tergeoo/claude-orchestrator https://github.com/tergeoo/Claude-Orchestrator
+            brew install claude-agent
             ```
 
-            ### Docker (server)
-            ```sh
-            docker run -d --restart=unless-stopped \
-              -e RELAY_URL=wss://your-relay.com \
-              -e AGENT_SECRET=your-secret \
-              -e AGENT_NAME=my-server \
-              ghcr.io/${{ github.repository_owner }}/claude-agent:${{ github.ref_name }}
+            ### Run
+            ```bash
+            claude-agent --relay wss://YOUR_RELAY --secret YOUR_SECRET [--name MyMac]
             ```
 
-            ### Manual download
-            Pick the binary for your platform below and follow the [README](https://github.com/${{ github.repository }}#agent-setup).
+            ### Or use a config file
+            ```bash
+            claude-agent --init   # creates ~/.config/claude-agent/config.yaml
+            # edit the file, then:
+            claude-agent
+            ```
 
-  # ── Build and push Docker image to GHCR ─────────────────────────────────────
-  docker:
-    name: Push Docker image
-    needs: [build-agent]
-    runs-on: ubuntu-latest
+            ### Auto-start on login
+            ```bash
+            brew services start claude-agent
+            ```
 
-    steps:
-      - uses: actions/checkout@v4
+      - name: Update Homebrew formula
+        run: |
+          VERSION="${{ github.ref_name }}"
+          ARM64_SHA=$(sha256sum dist/claude-agent-darwin-arm64 | awk '{print $1}')
+          AMD64_SHA=$(sha256sum dist/claude-agent-darwin-amd64 | awk '{print $1}')
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          # Strip leading 'v' for formula version field
+          VER="${VERSION#v}"
 
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/claude-agent
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+          sed -i \
+            -e "s|/releases/download/v[^/]*/claude-agent-darwin-arm64|/releases/download/${VERSION}/claude-agent-darwin-arm64|g" \
+            -e "s|/releases/download/v[^/]*/claude-agent-darwin-amd64|/releases/download/${VERSION}/claude-agent-darwin-amd64|g" \
+            -e "/claude-agent-darwin-arm64/{n; s|sha256 \"[^\"]*\"|sha256 \"${ARM64_SHA}\"|}" \
+            -e "/claude-agent-darwin-amd64/{n; s|sha256 \"[^\"]*\"|sha256 \"${AMD64_SHA}\"|}" \
+            -e "s|version \"[^\"]*\"|version \"${VER}\"|g" \
+            Formula/claude-agent.rb
 
-      - name: Set up QEMU (for arm64)
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: ./agent
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/claude-agent.rb
+          git diff --staged --quiet || git commit -m "chore: update formula to ${VERSION}"
+          git push

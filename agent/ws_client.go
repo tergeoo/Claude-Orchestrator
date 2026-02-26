@@ -35,7 +35,7 @@ func NewWSClient(cfg *Config) *WSClient {
 // Run maintains a persistent connection with exponential backoff on failure.
 func (c *WSClient) Run(ctx context.Context) {
 	backoff := time.Second
-	maxBackoff := 60 * time.Second
+	const maxBackoff = 60 * time.Second
 
 	for {
 		if err := c.connect(ctx); err != nil {
@@ -48,7 +48,9 @@ func (c *WSClient) Run(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			}
-			backoff = min(backoff*2, maxBackoff)
+			if backoff *= 2; backoff > maxBackoff {
+				backoff = maxBackoff
+			}
 		} else {
 			backoff = time.Second
 		}
@@ -411,9 +413,3 @@ func (c *WSClient) handleFSRead(ctx context.Context, payload json.RawMessage) {
 	})
 }
 
-func min(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
-}

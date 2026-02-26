@@ -1,12 +1,13 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"os"
 	"time"
 )
+
+var version = "dev"
 
 func main() {
 	port := os.Getenv("PORT")
@@ -36,17 +37,14 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Health check for Railway
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
 
-	// Auth endpoint
 	mux.HandleFunc("/auth/login", auth.LoginHandler)
 	mux.HandleFunc("/auth/refresh", auth.RefreshHandler)
 
-	// WebSocket endpoints
 	mux.HandleFunc("/ws/agent", func(w http.ResponseWriter, r *http.Request) {
 		handleAgentWS(w, r, hub, agentSecret)
 	})
@@ -58,14 +56,12 @@ func main() {
 		Addr:         ":" + port,
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 0, // No timeout for WebSocket connections
+		WriteTimeout: 0,
 		IdleTimeout:  120 * time.Second,
 	}
 
-	log.Printf("Relay server starting on :%s", port)
+	log.Printf("Claude Relay %s starting on :%s", version, port)
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
-
-	_ = context.Background()
 }

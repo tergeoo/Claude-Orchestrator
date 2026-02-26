@@ -14,6 +14,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var version = "dev"
+
 // Config holds agent configuration.
 type Config struct {
 	AgentID        string `yaml:"agent_id"`
@@ -117,11 +119,11 @@ func main() {
 		cfg.DefaultCommand = "bash"
 	}
 
-	log.Printf("Starting Claude Agent")
-	log.Printf("  Agent ID: %s", cfg.AgentID)
-	log.Printf("  Name:     %s", cfg.Name)
-	log.Printf("  Relay:    %s", cfg.RelayURL)
-	log.Printf("  Command:  %s", cfg.DefaultCommand)
+	log.Printf("Claude Agent %s", version)
+	log.Printf("  ID:      %s", cfg.AgentID)
+	log.Printf("  Name:    %s", cfg.Name)
+	log.Printf("  Relay:   %s", cfg.RelayURL)
+	log.Printf("  Command: %s", cfg.DefaultCommand)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()

@@ -1,44 +1,53 @@
 class ClaudeAgent < Formula
-  desc "Mac agent daemon for Claude Orchestrator — connects your Mac to the relay"
+  desc "Mac agent daemon for Claude Orchestrator — control Claude from your iPhone"
   homepage "https://github.com/tergeoo/Claude-Orchestrator"
-  version "1.0.0"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/tergeoo/Claude-Orchestrator/raw/main/bin/claude-agent-darwin-arm64"
-      sha256 "f9a25d227b958a56e7b7165df1ffd7449652bd893f71cb899e31f1e27968fcb2"
+      url "https://github.com/tergeoo/Claude-Orchestrator/releases/download/v1.0.0/claude-agent-darwin-arm64"
+      sha256 "c42e22cac97269873888ab01ebf9363b29a24d86f3b3c2eba3120853fe40341c"
+      version "1.0.0"
     end
     on_intel do
-      url "https://github.com/tergeoo/Claude-Orchestrator/raw/main/bin/claude-agent-darwin-amd64"
-      sha256 "0f44d0a9856d3bfc0d4eddae60e311df663689a113c8852ce4e113e43113b260"
+      url "https://github.com/tergeoo/Claude-Orchestrator/releases/download/v1.0.0/claude-agent-darwin-amd64"
+      sha256 "14a212ce1a5c5b5acd665bd6a65bf0493b27d0ccd5f0839866503b3198bee089"
+      version "1.0.0"
     end
   end
 
   def install
-    bin.install stable.url.split("/").last => "claude-agent"
+    binary = Dir["claude-agent-darwin-*"].first
+    bin.install binary => "claude-agent"
   end
 
   def caveats
     <<~EOS
-      Run the agent (no config file needed):
-        claude-agent --relay wss://YOUR_RELAY --secret YOUR_SECRET --name "#{`hostname`.strip}"
+      To run the agent:
+        claude-agent --relay wss://YOUR_RELAY --secret YOUR_SECRET
 
-      Or start as a background service with launchd:
+      Or create a config file first:
+        claude-agent --init
+        # Edit ~/.config/claude-agent/config.yaml
+        claude-agent
+
+      To run as a background service (auto-start on login):
         brew services start claude-agent
-        # Edit plist to add --relay / --secret flags first:
-        open ~/Library/LaunchAgents/homebrew.mxcl.claude-agent.plist
+        # Make sure ~/.config/claude-agent/config.yaml has relay_url and secret set
     EOS
   end
 
   service do
-    run [opt_bin/"claude-agent", "--config", "#{Dir.home}/.config/claude-agent/config.yaml"]
+    run [opt_bin/"claude-agent", "--config",
+         "#{Dir.home}/.config/claude-agent/config.yaml"]
     keep_alive true
     log_path "/tmp/claude-agent.log"
     error_log_path "/tmp/claude-agent.log"
+    working_dir Dir.home
   end
 
   test do
-    assert_match "Usage", shell_output("#{bin}/claude-agent --help 2>&1", 2)
+    output = shell_output("#{bin}/claude-agent --help 2>&1", 2)
+    assert_match "relay", output
   end
 end
