@@ -289,13 +289,14 @@ private struct SessionNameButton: View {
 }
 
 // MARK: - MachineSelectorSheet
+// Shows active sessions + available agents in one unified list.
 
 private struct MachineSelectorSheet: View {
     @EnvironmentObject var sessionManager: SessionManager
     @EnvironmentObject var relay: RelayWebSocket
 
     @Binding var selectedSessionID: String?
-    let onAddMachine: () -> Void
+    let onAddMachine: () -> Void   // opens full AgentListView for reattach
     let onDismiss: () -> Void
 
     @State private var sessionToRename: TerminalSession?
@@ -304,41 +305,72 @@ private struct MachineSelectorSheet: View {
     var body: some View {
         NavigationView {
             List {
-                Section {
-                    ForEach(sessionManager.sessions) { session in
-                        SessionRowView(
-                            session: session,
-                            isActive: session.id == selectedSessionID
+                // ── Active sessions ──────────────────────────────────────
+                if !sessionManager.sessions.isEmpty {
+                    Section {
+                        ForEach(sessionManager.sessions) { session in
+                            SessionRowView(
+                                session: session,
+                                isActive: session.id == selectedSessionID
+                            )
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selectedSessionID = session.id
+                                onDismiss()
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                Button {
+                                    sessionToRename = session
+                                    renameDraft = session.customName
+                                } label: {
+                                    Label("Rename", systemImage: "pencil")
+                                }
+                                .tint(.blue)
+                            }
+                            .swipeActions(edge: .trailing) {
+                                Button("Close", role: .destructive) {
+                                    closeSession(session)
+                                }
+                            }
+                        }
+                    } header: {
+                        Label(
+                            "\(sessionManager.sessions.count) active session\(sessionManager.sessions.count == 1 ? "" : "s")",
+                            systemImage: "terminal"
                         )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            selectedSessionID = session.id
-                            onDismiss()
-                        }
-                        // Leading swipe: rename
-                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                            Button {
-                                sessionToRename = session
-                                renameDraft = session.customName
-                            } label: {
-                                Label("Rename", systemImage: "pencil")
-                            }
-                            .tint(.blue)
-                        }
-                        // Trailing swipe: close
-                        .swipeActions(edge: .trailing) {
-                            Button("Close", role: .destructive) {
-                                closeSession(session)
-                            }
-                        }
                     }
-                } header: {
-                    Text("\(sessionManager.sessions.count) session\(sessionManager.sessions.count == 1 ? "" : "s")")
                 }
 
+                // ── Mac Agents ───────────────────────────────────────────
+                if !relay.agents.isEmpty {
+                    Section {
+                        ForEach(relay.agents) { agent in
+                            AgentSelectorRow(
+                                agent: agent,
+                                openSessionCount: sessionManager.sessions
+                                    .filter { $0.agent.id == agent.id }.count
+                            ) {
+                                sessionManager.createSession(for: agent)
+                                onDismiss()
+                            }
+                        }
+                    } header: {
+                        Label("Mac Agents", systemImage: "desktopcomputer")
+                    }
+                } else if relay.connectionState == .connected {
+                    Section {
+                        Label("No agents online", systemImage: "desktopcomputer.trianglebadge.exclamationmark")
+                            .foregroundStyle(.secondary)
+                            .font(.subheadline)
+                    } header: {
+                        Label("Mac Agents", systemImage: "desktopcomputer")
+                    }
+                }
+
+                // ── Footer actions ───────────────────────────────────────
                 Section {
                     Button(action: onAddMachine) {
-                        Label("Add Machine", systemImage: "plus.circle.fill")
+                        Label("Reattach to existing session…", systemImage: "arrow.clockwise")
                             .foregroundStyle(Color.accentColor)
                     }
                     if !sessionManager.sessions.isEmpty {
@@ -350,7 +382,7 @@ private struct MachineSelectorSheet: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("Sessions")
+            .navigationTitle("Sessions & Agents")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -358,7 +390,6 @@ private struct MachineSelectorSheet: View {
                 }
             }
         }
-        // Rename alert — lives inside the sheet's NavigationView
         .alert("Rename Session", isPresented: renameAlertBinding) {
             TextField("Session name", text: $renameDraft)
                 .autocorrectionDisabled()
@@ -387,6 +418,56 @@ private struct MachineSelectorSheet: View {
         if selectedSessionID == session.id {
             selectedSessionID = sessionManager.sessions.first?.id
         }
+    }
+}
+
+// MARK: - AgentSelectorRow
+
+private struct AgentSelectorRow: View {
+    let agent: Agent
+    let openSessionCount: Int
+    let onNewSession: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Online indicator
+            Circle()
+                .fill(agent.connected ? Color.green : Color.gray.opacity(0.5))
+                .frame(width: 9, height: 9)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(shortName)
+                    .font(.body)
+                    .foregroundStyle(agent.connected ? .primary : .secondary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if agent.connected {
+                Button(action: onNewSession) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private var shortName: String {
+        agent.name.components(separatedBy: ".").first ?? agent.name
+    }
+
+    private var subtitle: String {
+        guard agent.connected else { return "Offline" }
+        if openSessionCount == 0 {
+            return "Tap + to start a session"
+        }
+        return "\(openSessionCount) session\(openSessionCount == 1 ? "" : "s") open · tap + to add"
     }
 }
 
