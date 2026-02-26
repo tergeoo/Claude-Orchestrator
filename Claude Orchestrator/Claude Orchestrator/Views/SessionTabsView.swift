@@ -43,22 +43,11 @@ struct SessionTabsView: View {
             topBar
             Divider()
             reconnectingBanner
-            TabView(selection: $activeTab) {
-                terminalTab
-                    .tag(AppTab.terminal)
-                    .tabItem { Label("Terminal", systemImage: "terminal.fill") }
-
-                activityTab
-                    .tag(AppTab.activity)
-                    .tabItem { Label("Activity", systemImage: "list.bullet.clipboard.fill") }
-
-                filesTab
-                    .tag(AppTab.files)
-                    .tabItem { Label("Files", systemImage: "folder.fill") }
-            }
+            topTabBar
+            Divider()
+            tabContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        // Prevent the keyboard from shifting the outer layout (top bar, tab bar).
-        // Each tab manages its own keyboard interaction independently.
         .ignoresSafeArea(.keyboard)
         .sheet(isPresented: $showMachineSelector) {
             MachineSelectorSheet(
@@ -201,7 +190,31 @@ struct SessionTabsView: View {
         }
     }
 
-    // MARK: - Tab content
+    // MARK: - Top tab bar
+
+    private var topTabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(AppTab.allCases, id: \.self) { tab in
+                TopTabButton(
+                    tab: tab,
+                    isSelected: activeTab == tab,
+                    action: { activeTab = tab }
+                )
+            }
+        }
+        .background(.bar)
+    }
+
+    // MARK: - Tab content (switch, no bottom tab bar)
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch activeTab {
+        case .terminal: terminalTab
+        case .activity: activityTab
+        case .files:    filesTab
+        }
+    }
 
     @ViewBuilder
     private var terminalTab: some View {
@@ -251,6 +264,45 @@ struct SessionTabsView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - TopTabButton
+
+private struct TopTabButton: View {
+    let tab: AppTab
+    let isSelected: Bool
+    let action: () -> Void
+
+    private var icon: String {
+        switch tab {
+        case .terminal: return "terminal.fill"
+        case .activity: return "list.bullet.clipboard.fill"
+        case .files:    return "folder.fill"
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                HStack(spacing: 5) {
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                    Text(tab.rawValue)
+                        .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                }
+                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                .padding(.top, 8)
+
+                // Underline indicator
+                Rectangle()
+                    .fill(isSelected ? Color.accentColor : Color.clear)
+                    .frame(height: 2)
+                    .animation(.easeInOut(duration: 0.2), value: isSelected)
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
     }
 }
 
