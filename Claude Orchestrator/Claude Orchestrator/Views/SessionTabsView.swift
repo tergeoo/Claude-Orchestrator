@@ -5,7 +5,6 @@ import SwiftUI
 enum AppTab: String, CaseIterable {
     case terminal = "Terminal"
     case activity = "Activity"
-    case files    = "Files"
 }
 
 // MARK: - SessionTabsView
@@ -212,7 +211,6 @@ struct SessionTabsView: View {
         switch activeTab {
         case .terminal: terminalTab
         case .activity: activityTab
-        case .files:    filesTab
         }
     }
 
@@ -229,26 +227,6 @@ struct SessionTabsView: View {
     private var activityTab: some View {
         if let session = activeSession {
             ActivityFeedView(session: session)
-        } else {
-            noSessionPlaceholder
-        }
-    }
-
-    @ViewBuilder
-    private var filesTab: some View {
-        if let session = activeSession {
-            FileBrowserView(
-                agentID: session.agent.id,
-                agentName: session.agent.name,
-                embedded: true
-            ) { path, dangerous in
-                let cmd = dangerous
-                    ? "cd \"\(path)\" && claude --dangerously-skip-permissions"
-                    : "cd \"\(path)\" && claude"
-                sessionManager.createSession(for: session.agent, initialCommand: cmd)
-                activeTab = .terminal
-            }
-            .environmentObject(relay)
         } else {
             noSessionPlaceholder
         }
@@ -277,8 +255,7 @@ private struct TopTabButton: View {
     private var icon: String {
         switch tab {
         case .terminal: return "terminal.fill"
-        case .activity: return "list.bullet.clipboard.fill"
-        case .files:    return "folder.fill"
+        case .activity: return "bubble.left.and.bubble.right.fill"
         }
     }
 

@@ -14,6 +14,9 @@ final class TerminalSession: ObservableObject, Identifiable, Equatable {
     @Published var isReady: Bool = false
     @Published var activityLog: [ActivityEvent] = []
     @Published var claudeState: ClaudeState = .idle
+    /// True once Claude has been launched in this terminal.
+    /// Set automatically from initialCommand or detected from output.
+    @Published var claudeLaunched: Bool = false
 
     enum ClaudeState {
         case idle
@@ -48,6 +51,7 @@ final class TerminalSession: ObservableObject, Identifiable, Equatable {
         self.title = agent.name
         self.customName = customName
         self.initialCommand = initialCommand
+        self.claudeLaunched = initialCommand?.contains("claude") == true
         activityLog.append(ActivityEvent(sessionID: id, kind: .sessionStarted))
     }
 
@@ -58,6 +62,7 @@ final class TerminalSession: ObservableObject, Identifiable, Equatable {
         self.title = agentName
         self.customName = customName
         self.initialCommand = nil
+        self.claudeLaunched = false
         activityLog.append(ActivityEvent(sessionID: sessionID, kind: .sessionStarted))
     }
 
@@ -112,8 +117,19 @@ final class TerminalSession: ObservableObject, Identifiable, Equatable {
         let nsLine = line as NSString
         let range = NSRange(location: 0, length: nsLine.length)
 
+        // Auto-detect Claude startup from characteristic output patterns
+        if !claudeLaunched {
+            if line.hasPrefix("╭") || line.contains("Claude Code") ||
+               line.contains("✓ claude") || line.contains("claude --version") {
+                claudeLaunched = true
+            }
+        }
+
         if let match = Self.toolPattern.firstMatch(in: line, range: range),
            let nameRange = Range(match.range(at: 1), in: line) {
+            // A tool call means Claude is definitely running
+            claudeLaunched = true
+
             // Flush accumulated text before this tool call
             flushTextBuffer()
 
