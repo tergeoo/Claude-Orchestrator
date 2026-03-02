@@ -111,6 +111,85 @@ func cmdLogs() {
 	_ = tail.Run()
 }
 
+func configFilePath() string {
+	return filepath.Join(os.Getenv("HOME"), ".config", "clrc", ".env")
+}
+
+func setConfigValue(path, key, value string) {
+	_ = os.MkdirAll(filepath.Dir(path), 0700)
+
+	var lines []string
+	if data, err := os.ReadFile(path); err == nil {
+		lines = strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	}
+
+	found := false
+	for i, line := range lines {
+		if strings.HasPrefix(line, key+"=") {
+			lines[i] = fmt.Sprintf(`%s="%s"`, key, value)
+			found = true
+			break
+		}
+	}
+	if !found {
+		lines = append(lines, fmt.Sprintf(`%s="%s"`, key, value))
+	}
+
+	_ = os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0600)
+	fmt.Printf("✓ %s = %s\n", key, value)
+}
+
+func cmdConfig() {
+	fs := flag.NewFlagSet("config", flag.ExitOnError)
+	relayURL := fs.String("relay-url", "", "Set RELAY_URL")
+	secret   := fs.String("secret", "", "Set AGENT_SECRET")
+	name     := fs.String("name", "", "Set AGENT_NAME")
+	command  := fs.String("command", "", "Set DEFAULT_COMMAND")
+	show     := fs.Bool("show", false, "Print current config")
+	edit     := fs.Bool("edit", false, "Open config in $EDITOR")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: clrc config [flags]\n\n")
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  clrc config                          # show current config\n")
+		fmt.Fprintf(os.Stderr, "  clrc config --relay-url wss://...    # set relay URL\n")
+		fmt.Fprintf(os.Stderr, "  clrc config --secret mysecret        # set agent secret\n")
+		fmt.Fprintf(os.Stderr, "  clrc config --name \"My Mac\"          # set display name\n")
+		fmt.Fprintf(os.Stderr, "  clrc config --command claude         # set default command\n")
+		fmt.Fprintf(os.Stderr, "  clrc config --edit                   # open in $EDITOR\n")
+	}
+	fs.Parse(os.Args[2:])
+
+	path := configFilePath()
+
+	if *edit {
+		editor := os.Getenv("EDITOR")
+		if editor == "" {
+			editor = "nano"
+		}
+		cmd := exec.Command(editor, path)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		_ = cmd.Run()
+		return
+	}
+
+	changed := false
+	if *relayURL != "" { setConfigValue(path, "RELAY_URL", *relayURL); changed = true }
+	if *secret != ""   { setConfigValue(path, "AGENT_SECRET", *secret); changed = true }
+	if *name != ""     { setConfigValue(path, "AGENT_NAME", *name); changed = true }
+	if *command != ""  { setConfigValue(path, "DEFAULT_COMMAND", *command); changed = true }
+
+	if *show || !changed {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Printf("No config at %s\n\nCreate one:\n  clrc config --relay-url wss://... --secret SECRET\n", path)
+			return
+		}
+		fmt.Printf("# %s\n%s", path, string(data))
+	}
+}
+
 // loadEnvFile sources KEY="VALUE" pairs from path into the process environment,
 // skipping keys that are already set.
 func loadEnvFile(path string) {
@@ -208,11 +287,24 @@ func main() {
 		cmdStatus()
 	case "logs":
 		cmdLogs()
+	case "config":
+		cmdConfig()
 	case "_run", "": // internal daemon process or foreground run
 		run()
 	default:
-		fmt.Fprintf(os.Stderr, "Usage: clrc [start|stop|restart|status|logs]\n")
-		fmt.Fprintf(os.Stderr, "       clrc [--relay URL] [--secret SECRET] [--name NAME]\n")
+		fmt.Fprintf(os.Stderr, "clrc — Claude Remote Control\n\n")
+		fmt.Fprintf(os.Stderr, "Usage:\n")
+		fmt.Fprintf(os.Stderr, "  clrc start                           start daemon\n")
+		fmt.Fprintf(os.Stderr, "  clrc stop                            stop daemon\n")
+		fmt.Fprintf(os.Stderr, "  clrc restart                         restart daemon\n")
+		fmt.Fprintf(os.Stderr, "  clrc status                          show status\n")
+		fmt.Fprintf(os.Stderr, "  clrc logs                            tail log file\n")
+		fmt.Fprintf(os.Stderr, "  clrc config                          show config\n")
+		fmt.Fprintf(os.Stderr, "  clrc config --relay-url wss://...    set relay URL\n")
+		fmt.Fprintf(os.Stderr, "  clrc config --secret SECRET          set agent secret\n")
+		fmt.Fprintf(os.Stderr, "  clrc config --name \"My Mac\"          set display name\n")
+		fmt.Fprintf(os.Stderr, "  clrc config --command claude         set default command\n")
+		fmt.Fprintf(os.Stderr, "  clrc config --edit                   open config in $EDITOR\n")
 		os.Exit(1)
 	}
 }
