@@ -1,6 +1,43 @@
-.PHONY: relay agent relay-init agent-init app uninstall logs relay-logs build-relay build-agent build release help
+.PHONY: relay agent relay-init agent-init install uninstall app logs relay-logs status build-relay build-agent build release help
 
-# ── Development ──────────────────────────────────────────────────────────────
+INSTALL_DIR ?= /usr/local/bin
+
+# ── Quick start ───────────────────────────────────────────────────────────────
+
+## Build agent and install to /usr/local/bin/clrc
+install: build-agent
+	@if [ -w "$(INSTALL_DIR)" ]; then \
+		cp /tmp/clrc $(INSTALL_DIR)/clrc; \
+	else \
+		sudo cp /tmp/clrc $(INSTALL_DIR)/clrc; \
+	fi
+	@echo "✅ clrc installed → $(INSTALL_DIR)/clrc"
+	@echo ""
+	@echo "Next: configure and start"
+	@echo "  make config   # create ~/.config/clrc/.env"
+	@echo "  clrc start"
+
+## Create ~/.config/clrc/.env interactively
+config:
+	@mkdir -p ~/.config/clrc
+	@if [ -f ~/.config/clrc/.env ]; then \
+		echo "Config already exists: ~/.config/clrc/.env"; \
+		cat ~/.config/clrc/.env; \
+	else \
+		printf "Relay URL (e.g. wss://my-relay.up.railway.app): "; \
+		read relay; \
+		printf "Agent secret: "; \
+		read secret; \
+		printf "Agent name [%s]: " "$$(hostname)"; \
+		read name; \
+		[ -z "$$name" ] && name=$$(hostname); \
+		printf 'RELAY_URL="%s"\nAGENT_SECRET="%s"\nAGENT_NAME="%s"\nDEFAULT_COMMAND="bash"\n' \
+			"$$relay" "$$secret" "$$name" > ~/.config/clrc/.env; \
+		chmod 600 ~/.config/clrc/.env; \
+		echo "✅ Config written: ~/.config/clrc/.env"; \
+	fi
+
+# ── Development ───────────────────────────────────────────────────────────────
 
 ## Copy relay/.env.example → relay/.env (first-time setup)
 relay-init:
@@ -19,24 +56,24 @@ agent:
 	@./scripts/start-agent.sh
 
 ## Start relay + agent in parallel (dev only)
-dev:
+dev: relay-init agent-init
 	@./scripts/start-relay.sh &
 	@sleep 2
 	@./scripts/start-agent.sh
 
-# ── App bundle ───────────────────────────────────────────────────────────────
+# ── App bundle ────────────────────────────────────────────────────────────────
 
 ## Build "CLRC.app" — double-clickable macOS app
 app: build-agent
 	@sh scripts/make-app.sh /tmp/clrc
 
-# ── Installation ─────────────────────────────────────────────────────────────
+# ── Installation ──────────────────────────────────────────────────────────────
 
 ## Remove launchd service and binary
 uninstall:
 	@./scripts/uninstall-agent.sh
 
-# ── Logs & status ────────────────────────────────────────────────────────────
+# ── Logs & status ─────────────────────────────────────────────────────────────
 
 ## Tail agent logs
 logs:
@@ -48,9 +85,11 @@ relay-logs:
 
 ## Show launchd service status
 status:
-	@launchctl list | grep claude || echo "(not running)"
+	@launchctl list | grep com.clrc || echo "(not running)"
+	@echo ""
+	@clrc status 2>/dev/null || true
 
-# ── Build ────────────────────────────────────────────────────────────────────
+# ── Build ─────────────────────────────────────────────────────────────────────
 
 ## Build relay binary → /tmp/claude-relay
 build-relay:
@@ -71,30 +110,35 @@ release:
 	@git push origin "$(VERSION)"
 	@echo "✅ Tag $(VERSION) pushed — GitHub Actions will build binaries"
 
-# ── Help ─────────────────────────────────────────────────────────────────────
+# ── Help ──────────────────────────────────────────────────────────────────────
 
 help:
 	@echo ""
 	@echo "clrc — Claude Remote Control"
-	@echo "────────────────────────────────────────────"
-	@echo "Install (Homebrew):"
-	@echo "  brew tap tergeoo/clrc https://github.com/tergeoo/clrc"
-	@echo "  brew install clrc"
-	@echo "  brew services start clrc"
+	@echo "════════════════════════════════════════════"
 	@echo ""
-	@echo "Install (one-liner):"
+	@echo "Install from source:"
+	@echo "  make install          Build + install to /usr/local/bin"
+	@echo "  make config           Create ~/.config/clrc/.env"
+	@echo "  clrc start            Start daemon"
+	@echo ""
+	@echo "Install binary (no build required):"
 	@echo "  curl -fsSL https://raw.githubusercontent.com/tergeoo/clrc/main/install.sh | sh"
 	@echo ""
+	@echo "Install via Homebrew:"
+	@echo "  brew install --cask tergeoo/clrc/clrc"
+	@echo ""
 	@echo "Dev commands:"
-	@echo "  make relay-init  Create relay/.env"
-	@echo "  make agent-init  Create agent/.env"
-	@echo "  make relay       Start relay locally"
-	@echo "  make agent       Start clrc locally (foreground)"
-	@echo "  make app         Build CLRC.app (double-clickable)"
-	@echo "  make build       Build both binaries to /tmp/"
-	@echo "  make logs        Tail /tmp/clrc.log"
-	@echo "  make relay-logs  Tail relay logs"
-	@echo "  make status      Service status"
-	@echo "  make uninstall   Remove launchd service"
-	@echo "  make release VERSION=v1.2.0"
+	@echo "  make relay-init       Create relay/.env"
+	@echo "  make agent-init       Create agent/.env"
+	@echo "  make dev              Start relay + agent (foreground)"
+	@echo "  make relay            Start relay only"
+	@echo "  make agent            Start agent only"
+	@echo "  make build            Build both binaries to /tmp/"
+	@echo "  make app              Build CLRC.app (double-clickable)"
+	@echo "  make logs             Tail /tmp/clrc.log"
+	@echo "  make relay-logs       Tail relay logs"
+	@echo "  make status           Show service status"
+	@echo "  make uninstall        Remove launchd service"
+	@echo "  make release VERSION=v1.2.3"
 	@echo ""
