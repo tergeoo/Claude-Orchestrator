@@ -57,9 +57,9 @@ info "Fetching latest release from GitHub..."
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
 if command -v curl >/dev/null 2>&1; then
-  RELEASE_JSON="$(curl -fsSL "$API_URL")"
+  RELEASE_JSON="$(curl -fsSL -H "User-Agent: clrc-install" "$API_URL")"
 elif command -v wget >/dev/null 2>&1; then
-  RELEASE_JSON="$(wget -qO- "$API_URL")"
+  RELEASE_JSON="$(wget -qO- --header="User-Agent: clrc-install" "$API_URL")"
 else
   die "curl or wget is required"
 fi
