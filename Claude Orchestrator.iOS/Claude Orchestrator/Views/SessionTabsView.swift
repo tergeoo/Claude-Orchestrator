@@ -29,10 +29,44 @@ struct SessionTabsView: View {
     var body: some View {
         Group {
             if sessionManager.sessions.isEmpty {
-                AgentListView()
+                waitingView
             } else {
                 mainView
             }
+        }
+    }
+
+    // Shown when no sessions exist yet (waiting for agents to come online)
+    private var waitingView: some View {
+        VStack(spacing: 20) {
+            switch relay.connectionState {
+            case .connecting, .disconnected:
+                ProgressView()
+                Text(relay.connectionState == .connecting ? "Connecting…" : "Disconnected")
+                    .foregroundStyle(.secondary)
+                if relay.connectionState == .disconnected {
+                    Button("Retry") { relay.connect() }
+                        .buttonStyle(.borderedProminent)
+                }
+            case .connected:
+                Image(systemName: "desktopcomputer.trianglebadge.exclamationmark")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.tertiary)
+                Text("No agents online")
+                    .font(.headline)
+                Text("Start clrc on your Mac to connect")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Button("Add manually") { showAddAgent = true }
+                    .buttonStyle(.bordered)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $showAddAgent) {
+            AgentListView()
+                .environmentObject(relay)
+                .environmentObject(sessionManager)
+                .environmentObject(authService)
         }
     }
 
@@ -48,7 +82,6 @@ struct SessionTabsView: View {
             tabContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .ignoresSafeArea(.keyboard)
         .sheet(isPresented: $showMachineSelector) {
             MachineSelectorSheet(
                 selectedSessionID: $selectedSessionID,
@@ -585,16 +618,12 @@ private struct SessionRowView: View {
 }
 
 // MARK: - TerminalTabContent
-// Manages keyboard overlap so QuickCommandBar stays visible above the keyboard.
-// The outer layout uses .ignoresSafeArea(.keyboard), so this view is responsible
-// for tracking how much the keyboard overlaps its own bounds and compensating.
 
 private struct TerminalTabContent: View {
     let session: TerminalSession
     @EnvironmentObject var relay: RelayWebSocket
 
-    @State private var keyboardOverlap: CGFloat = 0
-    @State private var viewMaxY: CGFloat = 0
+    @State private var keyboardVisible = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -610,7 +639,7 @@ private struct TerminalTabContent: View {
                 }
 
                 // Keyboard dismiss button — appears only when keyboard is up
-                if keyboardOverlap > 0 {
+                if keyboardVisible {
                     Divider().frame(height: 32)
                     Button {
                         UIApplication.shared.sendAction(
@@ -626,50 +655,12 @@ private struct TerminalTabContent: View {
                 }
             }
             .background(.bar)
-
-            // Spacer equal to keyboard overlap — pushes the bar above the keyboard
-            Color.clear.frame(height: keyboardOverlap)
         }
-        // Read our bottom edge in global (screen) coordinates
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(
-                    key: ViewMaxYKey.self,
-                    value: geo.frame(in: .global).maxY
-                )
-            }
-        )
-        .onPreferenceChange(ViewMaxYKey.self) { viewMaxY = $0 }
-        // Track keyboard position and calculate overlap with this view
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: UIResponder.keyboardWillChangeFrameNotification
-            )
-        ) { notif in
-            guard let endFrame = notif.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-            let duration = notif.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
-            let overlap = max(0, viewMaxY - endFrame.minY)
-            withAnimation(.easeOut(duration: duration)) {
-                keyboardOverlap = overlap
-            }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            keyboardVisible = true
         }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: UIResponder.keyboardWillHideNotification
-            )
-        ) { notif in
-            let duration = notif.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
-            withAnimation(.easeOut(duration: duration)) {
-                keyboardOverlap = 0
-            }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardVisible = false
         }
-    }
-}
-
-// PreferenceKey used to bubble the view's bottom edge up from GeometryReader
-private struct ViewMaxYKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }

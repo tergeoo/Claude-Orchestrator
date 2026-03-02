@@ -135,9 +135,24 @@ final class SessionManager: ObservableObject {
 
     private let relay: RelayWebSocket
     private var sessionCounter = 0
+    private var cancellables = Set<AnyCancellable>()
 
     init(relay: RelayWebSocket) {
         self.relay = relay
+
+        // Auto-create one session per Mac when agents come online.
+        // Skips agents that already have a session (reconnect / duplicate).
+        relay.$agents
+            .receive(on: RunLoop.main)
+            .sink { [weak self] agents in
+                guard let self else { return }
+                for agent in agents where agent.connected {
+                    if !self.sessions.contains(where: { $0.agent.id == agent.id }) {
+                        self.createSession(for: agent)
+                    }
+                }
+            }
+            .store(in: &cancellables)
 
         relay.onSessionReady = { [weak self] sessionID in
             guard let self = self else { return }
