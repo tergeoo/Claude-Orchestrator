@@ -137,8 +137,11 @@ jobs:
 
           sed -i \
             -e "s|version \"[^\"]*\"|version \"${VER}\"|" \
-            -e "/on_arm/{n; s|sha256 \"[^\"]*\"|sha256 \"${ARM64_SHA}\"|}"\
-            -e "/on_intel/{n; s|sha256 \"[^\"]*\"|sha256 \"${AMD64_SHA}\"|}"\
+            Formula/clrc.rb
+          # Replace sha256 on the line immediately after the matching url line
+          sed -i \
+            -e "/clrc-darwin-arm64/{n; s|sha256 \"[^\"]*\"|sha256 \"${ARM64_SHA}\"|}"\
+            -e "/clrc-darwin-amd64/{n; s|sha256 \"[^\"]*\"|sha256 \"${AMD64_SHA}\"|}"\
             Formula/clrc.rb
 
           git config user.name "github-actions[bot]"
