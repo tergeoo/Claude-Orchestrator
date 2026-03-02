@@ -86,7 +86,7 @@ jobs:
           name: claude-relay-${{ matrix.goos }}-${{ matrix.goarch }}
           path: relay/claude-relay-${{ matrix.goos }}-${{ matrix.goarch }}
 
-  # ── Create GitHub Release with all binaries ─────────────────────────────────
+  # ── Create GitHub Release + update Homebrew formula ─────────────────────────
   release:
     name: Create Release
     needs: [build-agent, build-relay]
@@ -94,6 +94,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -101,33 +103,49 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: List artifacts
-        run: ls -lh dist/
-
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           generate_release_notes: true
           body: |
-            ## Installation
+            ## Install
 
-            ### Mac / Linux (one-liner)
+            ### Homebrew (recommended)
             ```sh
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh
+            brew tap tergeoo/clrc https://github.com/tergeoo/clrc
+            brew install clrc
+            brew services start clrc   # auto-start on login
             ```
 
-            ### Docker (server)
+            ### One-liner
             ```sh
-            docker run -d --restart=unless-stopped \
-              -e RELAY_URL=wss://your-relay.com \
-              -e AGENT_SECRET=your-secret \
-              -e AGENT_NAME=my-server \
-              ghcr.io/${{ github.repository_owner }}/clrc:${{ github.ref_name }}
+            curl -fsSL https://raw.githubusercontent.com/tergeoo/clrc/main/install.sh | sh
             ```
 
-            ### Manual download
-            Pick the binary for your platform below and follow the [README](https://github.com/${{ github.repository }}#agent-setup).
+            ### Usage
+            ```sh
+            clrc start / stop / restart / status / logs
+            ```
+
+      - name: Update Homebrew formula
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VER="${VERSION#v}"
+          ARM64_SHA=$(sha256sum dist/clrc-darwin-arm64 | awk '{print $1}')
+          AMD64_SHA=$(sha256sum dist/clrc-darwin-amd64 | awk '{print $1}')
+
+          sed -i \
+            -e "s|version \"[^\"]*\"|version \"${VER}\"|" \
+            -e "/on_arm/{n; s|sha256 \"[^\"]*\"|sha256 \"${ARM64_SHA}\"|}"\
+            -e "/on_intel/{n; s|sha256 \"[^\"]*\"|sha256 \"${AMD64_SHA}\"|}"\
+            Formula/clrc.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/clrc.rb
+          git diff --staged --quiet || git commit -m "chore: update formula to ${VERSION}"
+          git push
 
   # ── Build and push Docker image to GHCR ─────────────────────────────────────
   docker:
