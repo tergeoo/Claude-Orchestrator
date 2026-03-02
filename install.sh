@@ -52,27 +52,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# ── Find latest release ───────────────────────────────────────────────────────
-info "Fetching latest release from GitHub..."
-API_URL="https://api.github.com/repos/${REPO}/releases/latest"
-
-if command -v curl >/dev/null 2>&1; then
-  RELEASE_JSON="$(curl -fsSL -H "User-Agent: clrc-install" "$API_URL")"
-elif command -v wget >/dev/null 2>&1; then
-  RELEASE_JSON="$(wget -qO- --header="User-Agent: clrc-install" "$API_URL")"
-else
-  die "curl or wget is required"
-fi
-
-# Extract download URL for our asset
-DOWNLOAD_URL="$(printf '%s' "$RELEASE_JSON" | grep -o "\"browser_download_url\": *\"[^\"]*${ASSET_NAME}[^\"]*\"" | head -1 | sed 's/.*": *"\(.*\)"/\1/')"
-
-if [ -z "$DOWNLOAD_URL" ]; then
-  die "No binary found for ${ASSET_NAME} in latest release.\nCheck: https://github.com/${REPO}/releases"
-fi
-
-VERSION="$(printf '%s' "$RELEASE_JSON" | grep -o '"tag_name": *"[^"]*"' | head -1 | sed 's/.*": *"\(.*\)"/\1/')"
-info "Installing version: $VERSION"
+# ── Build download URL (no API call — GitHub redirects /latest/download/) ─────
+DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${ASSET_NAME}"
+info "Downloading latest release..."
 
 # ── Download binary ───────────────────────────────────────────────────────────
 TMP_BIN="$(mktemp)"
