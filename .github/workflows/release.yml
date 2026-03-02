@@ -128,26 +128,33 @@ jobs:
             clrc start / stop / restart / status / logs
             ```
 
-      - name: Update Homebrew formula
+      - name: Update Homebrew formula and cask
         run: |
           VERSION="${{ github.ref_name }}"
           VER="${VERSION#v}"
           ARM64_SHA=$(sha256sum dist/clrc-darwin-arm64 | awk '{print $1}')
           AMD64_SHA=$(sha256sum dist/clrc-darwin-amd64 | awk '{print $1}')
 
+          # Update Formula/clrc.rb
           sed -i \
             -e "s|version \"[^\"]*\"|version \"${VER}\"|" \
             Formula/clrc.rb
-          # Replace sha256 on the line immediately after the matching url line
           sed -i \
             -e "/clrc-darwin-arm64/{n; s|sha256 \"[^\"]*\"|sha256 \"${ARM64_SHA}\"|}"\
             -e "/clrc-darwin-amd64/{n; s|sha256 \"[^\"]*\"|sha256 \"${AMD64_SHA}\"|}"\
             Formula/clrc.rb
 
+          # Update Casks/clrc.rb
+          sed -i \
+            -e "s|version \"[^\"]*\"|version \"${VER}\"|" \
+            -e "s|arm:   \"[^\"]*\"|arm:   \"${ARM64_SHA}\"|" \
+            -e "s|intel: \"[^\"]*\"|intel: \"${AMD64_SHA}\"|" \
+            Casks/clrc.rb
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/clrc.rb
-          git diff --staged --quiet || git commit -m "chore: update formula to ${VERSION}"
+          git add Formula/clrc.rb Casks/clrc.rb
+          git diff --staged --quiet || git commit -m "chore: update formula and cask to ${VERSION}"
           git push
 
   # ── Build and push Docker image to GHCR ─────────────────────────────────────
