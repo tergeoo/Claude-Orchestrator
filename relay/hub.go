@@ -1,4 +1,4 @@
-package main
+package relay
 
 import (
 	"context"
@@ -253,7 +253,7 @@ func mustMarshal(v any) json.RawMessage {
 }
 
 // handleAgentWS handles WebSocket connections from Mac agents.
-func handleAgentWS(w http.ResponseWriter, r *http.Request, hub *Hub, agentSecret string) {
+func HandleAgentWS(w http.ResponseWriter, r *http.Request, hub *Hub, agentSecret string) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		InsecureSkipVerify: false,
 	})
@@ -344,7 +344,7 @@ func handleAgentWS(w http.ResponseWriter, r *http.Request, hub *Hub, agentSecret
 }
 
 // handleClientWS handles WebSocket connections from iOS clients.
-func handleClientWS(w http.ResponseWriter, r *http.Request, hub *Hub, auth *Auth) {
+func HandleClientWS(w http.ResponseWriter, r *http.Request, hub *Hub, auth *Auth) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		InsecureSkipVerify: false,
 	})

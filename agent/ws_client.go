@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"context"
@@ -25,9 +25,9 @@ type WSClient struct {
 	connMu   sync.Mutex
 }
 
-func NewWSClient(cfg *Config) *WSClient {
+func NewWSClient(cfg Config) *WSClient {
 	return &WSClient{
-		cfg:      cfg,
+		cfg:      &cfg,
 		sessions: make(map[string]*PTYSession),
 	}
 }

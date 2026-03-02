@@ -32,7 +32,7 @@ PORT="${PORT:-8080}"
 
 echo "🔄 Building relay..."
 cd "$RELAY_DIR"
-go build -o /tmp/claude-relay . 2>&1
+go build -o /tmp/claude-relay ./cmd/ 2>&1
 
 echo "🚀 Relay starting on :${PORT}"
 echo "   Login password: ${ADMIN_PASSWORD}"

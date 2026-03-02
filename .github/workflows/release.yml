@@ -42,7 +42,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
-            -o "claude-agent-${{ matrix.goos }}-${{ matrix.goarch }}" .
+            -o "claude-agent-${{ matrix.goos }}-${{ matrix.goarch }}" ./cmd/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -78,7 +78,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
-            -o "claude-relay-${{ matrix.goos }}-${{ matrix.goarch }}" .
+            -o "claude-relay-${{ matrix.goos }}-${{ matrix.goarch }}" ./cmd/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

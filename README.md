@@ -4,10 +4,10 @@ Control multiple Macs from your iPhone — interactive Claude Code CLI over WebS
 
 ```
 iPhone (SwiftUI)
-    │  WebSocket / TLS
+    │  WebSocket
     ▼
 Relay Server  ←── each Mac agent registers here
-    │  WebSocket / TLS
+    │  WebSocket
     ▼
 Mac Agent (Go daemon)
     │  PTY
@@ -22,123 +22,129 @@ claude CLI process
 | Component | Requirement |
 |-----------|-------------|
 | Mac agent | Go 1.21+, `claude` CLI installed |
-| Relay server | Any Linux host, Docker, or Railway |
-| iOS app | Xcode 15+, iOS 17+, SwiftTerm (added via SPM) |
+| Relay server | Local Mac, Linux host, or Docker |
+| iOS app | Xcode 15+, iOS 17+ |
 
 ---
 
-## Step 1 — Deploy the relay
+## Step 1 — Start the relay
 
-The relay is a small Go server that routes traffic between your iPhone and Mac agents.
-Deploy it once to the cloud; it stays running permanently.
+The relay routes traffic between your iPhone and Mac agents.
 
-### Option A: Railway (recommended, free tier works)
-
-1. Fork this repo or push it to GitHub
-2. In [Railway](https://railway.app) → **New Project → Deploy from GitHub** → select `relay/`
-3. Set environment variables:
-
-| Variable | Value |
-|----------|-------|
-| `JWT_SECRET` | `openssl rand -hex 32` |
-| `ADMIN_PASSWORD` | Password you'll type in the iOS app |
-| `AGENT_SECRET` | Secret shared with all Mac agents |
-
-Railway auto-detects the `Dockerfile` and exposes a public URL like `https://your-relay.up.railway.app`.
-
-### Option B: Local development
+### Local network (recommended)
 
 ```bash
-# 1. Copy and edit the env file
-cp relay/.env.example relay/.env
-$EDITOR relay/.env          # fill in JWT_SECRET, ADMIN_PASSWORD, AGENT_SECRET
-
-# 2. Start
-make relay
-#  → builds relay binary and starts on :8080
+make relay-init             # creates relay/.env from example
+$EDITOR relay/.env          # set JWT_SECRET, ADMIN_PASSWORD, AGENT_SECRET
+make relay                  # builds and starts on :8080
 ```
+
+### Cloud (Railway, fly.io, etc.)
+
+Deploy `relay/` with a `Dockerfile`. Set the same three environment variables and use the public `wss://` URL in the agent config and iOS app.
 
 ---
 
 ## Step 2 — Install the agent on each Mac
 
-Run this on **every Mac** you want to control.
-
-### Quick install (launchd — auto-start on login)
+### One-liner (downloads from GitHub Releases)
 
 ```bash
-# Clone or copy the repo, then:
-make install
+curl -fsSL https://raw.githubusercontent.com/vrtoursuz/claude-orchestrator/main/install.sh | sh
 ```
 
-What `make install` does:
-1. Builds `claude-agent` and installs it to `/usr/local/bin/`
-2. Creates `~/.config/claude-agent/config.yaml` on first run
-3. Installs and loads a launchd service (`com.claude.agent`) that starts on login and restarts on crash
+Prompts for relay URL and agent secret, installs the binary, and registers a launchd service that starts on login.
 
-**First run** will print the config path and exit — edit it:
-
-```yaml
-# ~/.config/claude-agent/config.yaml
-agent_id: macbook-pro-home        # unique ID for this Mac (no spaces)
-name: MacBook Pro Home            # display name in the iOS app
-secret: your-agent-secret        # must match AGENT_SECRET in relay .env
-relay_url: wss://your-relay.up.railway.app
-default_command: claude           # or "bash" for a plain shell
-```
-
-Then re-run `make install` to install with the updated config.
-
-### Development (no launchd, runs in foreground)
+### From source
 
 ```bash
-make agent
-# builds and starts, auto-inits config on first run
+make agent-init             # creates agent/.env from example
+$EDITOR agent/.env          # set RELAY_URL, AGENT_SECRET, AGENT_ID
+make agent                  # builds and runs
 ```
 
-### Useful commands
+`agent/.env`:
+
+```env
+AGENT_ID=550e8400-e29b-41d4-a716-446655440000   # uuidgen | tr A-Z a-z
+AGENT_NAME=MacBook Pro
+AGENT_SECRET=your-agent-secret                  # must match AGENT_SECRET in relay/.env
+RELAY_URL=ws://192.168.1.10:8080                # or wss:// for cloud relay
+DEFAULT_COMMAND=claude
+```
+
+### Development (foreground, no launchd)
 
 ```bash
-make logs       # tail -f /tmp/claude-agent.log
-make status     # launchctl list | grep claude
-make uninstall  # remove service and binary
+make agent                  # builds and runs in foreground
 ```
 
 ---
 
 ## Step 3 — iOS App
 
-1. Open `Claude Orchestrator/Claude Orchestrator.xcodeproj` in Xcode
-2. **Add SwiftTerm** via SPM:
-   `File → Add Package Dependencies → https://github.com/migueldeicaza/SwiftTerm`
-3. Build & run on your device or simulator
-
-**First launch:**
-- Enter your relay URL (e.g. `https://your-relay.up.railway.app`)
-- Enter `ADMIN_PASSWORD`
-- Tap an online Mac → terminal opens
+1. Open `Claude Orchestrator.iOS/Claude Orchestrator.xcodeproj` in Xcode
+2. Build & run on your device (same Wi-Fi as the relay)
+3. Enter relay URL and `ADMIN_PASSWORD` on first launch
 
 ---
 
-## App UX
+## Useful commands
 
-```
-┌─────────────────────────────────────────┐
-│  ● MacBook Pro  ○ Mac Mini  +   [⌨][📁] │  ← machines + Terminal/Files toggle
-├─────────────────────────────────────────┤
-│                                         │
-│   Terminal  or  File Browser            │
-│                                         │
-├─────────────────────────────────────────┤
-│  ↑  ↓  Tab  Ctrl+C  ✦ claude  ⚠ claude │  ← quick commands
-└─────────────────────────────────────────┘
+```bash
+make relay          # start relay locally
+make agent          # start agent locally (foreground)
+make logs           # tail -f /tmp/claude-agent.log
+make relay-logs     # tail -f /tmp/claude-relay.log
+make status         # launchctl list | grep claude
+make uninstall      # remove launchd service and binary
+make release VERSION=v1.2.3   # tag + push → triggers CI build
 ```
 
-- **Switch machines** — tap the machine pill
-- **Switch view** — tap `⌨` (terminal) or `📁` (file browser)
-- **Browse files** — navigate directories, create folders, read files, delete
-- **Launch Claude** — "Claude here" button in file browser → opens a terminal in that directory
-- **Dangerous mode** — sends `claude --dangerously-skip-permissions`
+---
+
+## Repository structure
+
+```
+claude-orchestrator/
+├── Makefile
+├── install.sh                  # public one-liner installer (curl | sh)
+├── scripts/
+│   ├── start-relay.sh          # used by: make relay
+│   ├── start-agent.sh          # used by: make agent
+│   └── uninstall-agent.sh      # used by: make uninstall
+│
+├── relay/
+│   ├── .env.example
+│   ├── Dockerfile
+│   ├── main.go                 # HTTP server, env config
+│   ├── hub.go                  # connection registry + routing
+│   ├── session.go              # message types
+│   └── auth.go                 # JWT login / rate limiting
+│
+├── agent/
+│   ├── docker-compose.agent.yml
+│   ├── Dockerfile
+│   ├── main.go                 # config, startup
+│   ├── ws_client.go            # relay connection, message routing
+│   ├── pty_session.go          # PTY process management
+│   └── fs_ops.go               # file system operations
+│
+├── proto/
+│   └── messages.go             # shared message type definitions
+│
+└── Claude Orchestrator.iOS/    # Xcode project (SwiftUI)
+    ├── App/ClaudeTerminalApp.swift
+    ├── Views/
+    │   ├── SessionTabsView.swift
+    │   ├── AgentListView.swift
+    │   ├── TerminalView.swift
+    │   └── FileBrowserView.swift
+    ├── Models/TerminalSession.swift
+    └── Services/
+        ├── RelayWebSocket.swift
+        └── AuthService.swift
+```
 
 ---
 
@@ -169,53 +175,14 @@ make uninstall  # remove service and binary
 
 ---
 
-## Repository structure
-
-```
-claude-orchestrator/
-├── Makefile                    # make relay / agent / install / logs
-├── scripts/
-│   ├── start-relay.sh          # dev: start relay (reads relay/.env)
-│   ├── start-agent.sh          # dev: start agent (reads ~/.config/claude-agent/config.yaml)
-│   ├── install-agent.sh        # install as launchd service
-│   └── uninstall-agent.sh      # remove service
-│
-├── relay/
-│   ├── .env.example            # ← copy to .env for local dev
-│   ├── Dockerfile              # for Railway / Docker
-│   ├── main.go                 # HTTP server, env config
-│   ├── hub.go                  # connection registry + routing
-│   ├── session.go              # message types
-│   └── auth.go                 # JWT login/refresh
-│
-├── agent/
-│   ├── main.go                 # config, startup, --init flag
-│   ├── ws_client.go            # relay connection, message routing
-│   ├── pty_session.go          # PTY process management
-│   └── fs_ops.go               # file system operations
-│
-└── Claude Orchestrator/        # Xcode project (SwiftUI iOS app)
-    ├── App/
-    │   └── ClaudeTerminalApp.swift     # app entry, SessionManager, LoginView
-    ├── Views/
-    │   ├── SessionTabsView.swift       # machine pills + Terminal/Files switcher
-    │   ├── AgentListView.swift         # connect to Mac / session picker
-    │   ├── FileBrowserView.swift       # file browser (inline + sheet modes)
-    │   └── TerminalView.swift          # SwiftTerm integration + quick commands
-    ├── Models/
-    │   └── TerminalSession.swift
-    └── Services/
-        ├── RelayWebSocket.swift        # WS connection + binary mux + fs ops
-        └── AuthService.swift           # JWT + Keychain
-```
-
----
-
 ## Security
 
 | Threat | Mitigation |
 |--------|------------|
-| MITM | TLS (`wss://`) with certificate validation |
 | Unauthorized access | JWT (15 min access + 30 day refresh) for clients; pre-shared secret for agents |
-| Session hijacking | `session_id` is UUID v4 |
+| Brute force | Rate limiter: max 10 login attempts per minute per IP |
+| Session hijacking | `session_id` validated as UUID v4 |
+| Oversized messages | 4 MB limit on all incoming WebSocket frames |
+| Connection flooding | Max 50 agents / 20 clients |
+| Path traversal | `fs_ops` rejects paths outside the home directory |
 | Token leakage | Tokens stored in iOS Keychain |

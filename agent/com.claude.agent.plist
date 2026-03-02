@@ -7,7 +7,6 @@
 
     <key>ProgramArguments</key>
     <array>
-        <!-- Update this path after building the agent binary -->
         <string>/usr/local/bin/claude-agent</string>
     </array>
 
@@ -17,7 +16,6 @@
     <key>KeepAlive</key>
     <true/>
 
-    <!-- Restart on failure with 10-second delay -->
     <key>ThrottleInterval</key>
     <integer>10</integer>
 
@@ -25,15 +23,37 @@
     <string>/tmp/claude-agent.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/tmp/claude-agent.err</string>
+    <string>/tmp/claude-agent.log</string>
 
-    <!-- Load user's environment so claude CLI is on PATH -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>HOME</key>
         <string>/Users/YOUR_USERNAME</string>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+        <key>TERM</key>
+        <string>xterm-256color</string>
+        <key>LANG</key>
+        <string>en_US.UTF-8</string>
+
+        <!-- Generate once: uuidgen | tr A-Z a-z -->
+        <key>AGENT_ID</key>
+        <string>YOUR_UUID</string>
+
+        <!-- Display name shown in the iOS app -->
+        <key>AGENT_NAME</key>
+        <string>My Mac</string>
+
+        <!-- Must match AGENT_SECRET in relay/.env -->
+        <key>AGENT_SECRET</key>
+        <string>YOUR_AGENT_SECRET</string>
+
+        <!-- ws://LAN_IP:8080  or  wss://your-relay.up.railway.app -->
+        <key>RELAY_URL</key>
+        <string>ws://192.168.1.10:8080</string>
+
+        <key>DEFAULT_COMMAND</key>
+        <string>claude</string>
     </dict>
 </dict>
 </plist>

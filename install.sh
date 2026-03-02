@@ -9,7 +9,7 @@ REPO="vrtoursuz/claude-orchestrator"
 BINARY="claude-agent"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="$HOME/.config/claude-agent"
-CONFIG_FILE="$CONFIG_DIR/config.yaml"
+CONFIG_FILE="$CONFIG_DIR/.env"
 
 # ── Colours ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BOLD='\033[1m'; NC='\033[0m'
@@ -138,13 +138,13 @@ else
   # Generate a stable agent ID
   AGENT_ID="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || od -x /dev/urandom | head -1 | awk '{OFS="-"; print $2$3,$4,$5,$6,$7$8$9}')"
 
-  cat > "$CONFIG_FILE" <<YAML
-agent_id: "${AGENT_ID}"
-name: "${AGENT_NAME}"
-secret: "${AGENT_SECRET}"
-relay_url: "${RELAY_URL}"
-default_command: "bash"
-YAML
+  cat > "$CONFIG_FILE" <<ENV
+AGENT_ID="${AGENT_ID}"
+AGENT_NAME="${AGENT_NAME}"
+AGENT_SECRET="${AGENT_SECRET}"
+RELAY_URL="${RELAY_URL}"
+DEFAULT_COMMAND="bash"
+ENV
   chmod 600 "$CONFIG_FILE"
   success "Config written: $CONFIG_FILE"
 fi
@@ -153,6 +153,8 @@ fi
 install_launchd() {
   PLIST="$HOME/Library/LaunchAgents/com.claude.agent.plist"
   BINARY_PATH="$(which $BINARY 2>/dev/null || echo "$INSTALL_DIR/$BINARY")"
+  # Read values from config file
+  . "$CONFIG_FILE"
   cat > "$PLIST" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -162,16 +164,28 @@ install_launchd() {
   <key>ProgramArguments</key>
   <array>
     <string>${BINARY_PATH}</string>
-    <string>--config</string>
-    <string>${CONFIG_FILE}</string>
   </array>
   <key>RunAtLoad</key>         <true/>
   <key>KeepAlive</key>         <true/>
+  <key>ThrottleInterval</key>  <integer>10</integer>
   <key>StandardOutPath</key>   <string>/tmp/claude-agent.log</string>
   <key>StandardErrorPath</key> <string>/tmp/claude-agent.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>            <string>${HOME}</string>
+    <key>PATH</key>            <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+    <key>TERM</key>            <string>xterm-256color</string>
+    <key>LANG</key>            <string>en_US.UTF-8</string>
+    <key>AGENT_ID</key>        <string>${AGENT_ID}</string>
+    <key>AGENT_NAME</key>      <string>${AGENT_NAME}</string>
+    <key>AGENT_SECRET</key>    <string>${AGENT_SECRET}</string>
+    <key>RELAY_URL</key>       <string>${RELAY_URL}</string>
+    <key>DEFAULT_COMMAND</key> <string>${DEFAULT_COMMAND}</string>
+  </dict>
 </dict>
 </plist>
 XML
+  chmod 600 "$PLIST"
   launchctl unload "$PLIST" 2>/dev/null || true
   launchctl load -w "$PLIST"
   success "Installed as launchd service (auto-starts on login)"
@@ -189,7 +203,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=${BINARY_PATH} --config ${CONFIG_FILE}
+EnvironmentFile=${CONFIG_FILE}
+ExecStart=${BINARY_PATH}
 Restart=always
 RestartSec=5
 StandardOutput=append:/tmp/claude-agent.log
@@ -216,7 +231,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=${BINARY_PATH} --config ${CONFIG_FILE}
+EnvironmentFile=${CONFIG_FILE}
+ExecStart=${BINARY_PATH}
 Restart=always
 RestartSec=5
 StandardOutput=append:/tmp/claude-agent.log
@@ -245,13 +261,13 @@ elif [ "$GOOS" = "linux" ]; then
     fi
   else
     warn "systemd not found. Start agent manually:"
-    info "  $BINARY --config $CONFIG_FILE"
+    info "  . $CONFIG_FILE && $BINARY"
   fi
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 printf "\n${GREEN}${BOLD}Installation complete!${NC}\n"
-printf "\nThe agent will connect to your relay and appear as '${BOLD}$(grep 'name:' "$CONFIG_FILE" | awk '{print $2}')${NC}' in the iOS app.\n"
+printf "\nThe agent will connect to your relay and appear as '${BOLD}${AGENT_NAME}${NC}' in the iOS app.\n"
 printf "\nTo check status:\n"
 if [ "$GOOS" = "darwin" ]; then
   printf "  launchctl list | grep claude\n"
