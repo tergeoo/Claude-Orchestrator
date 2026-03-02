@@ -5,7 +5,7 @@
 #   curl -fsSL .../install.sh | sh -s -- --relay wss://my-relay.com --secret mysecret
 set -e
 
-REPO="vrtoursuz/claude-orchestrator"
+REPO="tergeoo/Claude-Orchestrator"
 BINARY="claude-agent"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="$HOME/.config/claude-agent"
