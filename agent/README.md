@@ -39,7 +39,7 @@ Logs: `tail -f /tmp/clrc.log`
 ## One-liner install (from GitHub Releases)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/vrtoursuz/claude-orchestrator/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tergeoo/clrc/main/install.sh | sh
 ```
 
 Prompts for relay URL and secret, downloads the binary, sets up launchd.

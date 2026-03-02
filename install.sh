@@ -1,6 +1,6 @@
 #!/bin/sh
 # CLRC — Universal Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/vrtoursuz/claude-orchestrator/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/tergeoo/clrc/main/install.sh | sh
 # Or with options:
 #   curl -fsSL .../install.sh | sh -s -- --relay wss://my-relay.com --secret mysecret
 set -e
